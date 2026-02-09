@@ -17,11 +17,15 @@ const realpath = (value: string) => (fs.existsSync(value) ? fs.realpathSync(valu
 
 const isCLI = process.argv.some((value) => realpath(value).endsWith(path.join('payload', 'bin.js')))
 const isProduction = process.env.NODE_ENV === 'production'
+const isNextProductionBuild = process.env.NEXT_PHASE === 'phase-production-build'
+const useRemoteWranglerBindings = process.env.CLOUDFLARE_REMOTE_BINDINGS === 'true'
 
 const cloudflare =
-  isCLI || !isProduction
+  isCLI || !isProduction || isNextProductionBuild
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
+
+const r2Bucket = cloudflare.env.R2 as unknown as Parameters<typeof r2Storage>[0]['bucket']
 
 export default buildConfig({
   admin: {
@@ -39,7 +43,7 @@ export default buildConfig({
   db: sqliteD1Adapter({ binding: cloudflare.env.D1 }),
   plugins: [
     r2Storage({
-      bucket: cloudflare.env.R2,
+      bucket: r2Bucket,
       collections: { media: true },
     }),
   ],
@@ -51,7 +55,7 @@ function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
     ({ getPlatformProxy }) =>
       getPlatformProxy({
         environment: process.env.CLOUDFLARE_ENV,
-        remoteBindings: isProduction,
+        remoteBindings: useRemoteWranglerBindings,
       } satisfies GetPlatformProxyOptions),
   )
 }
